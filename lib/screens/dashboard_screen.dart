@@ -207,18 +207,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   // Sisi Kanan: Lonceng Pintar
-                  Stack(
-                    clipBehavior: Clip.none,
+                  // Sisi Kanan: Ikon Tema & Lonceng Pintar
+                  Row(
                     children: [
-                      Icon(Icons.notifications_none, color: textColor, size: 28),
-                      if (unpaidDebtsCount > 0) // Munculkan titik merah jika ada utang
-                        Positioned(
-                          right: 2, top: 2,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(color: AppColors.error, shape: BoxShape.circle),
-                          ),
+                      // --- TOMBOL GANTI TEMA ---
+                      IconButton(
+                        icon: Icon(
+                          isDark ? Icons.light_mode : Icons.dark_mode,
+                          color: isDark ? Colors.amber : Colors.blueGrey,
                         ),
+                        onPressed: () => themeProv.toggleTheme(),
+                      ),
+                      const SizedBox(width: 8), // Jarak antara matahari dan lonceng
+                      
+                      // --- LONCENG NOTIFIKASI ---
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(Icons.notifications_none, color: textColor, size: 28),
+                          if (unpaidDebtsCount > 0)
+                            Positioned(
+                              right: 2,
+                              top: 2,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: AppColors.error,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ],
                   )
                 ],

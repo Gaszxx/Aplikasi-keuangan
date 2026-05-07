@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import 'dashboard_screen.dart';
+import 'income_form_screen.dart';
+import 'kelapa_report_screen.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -14,11 +16,19 @@ class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
 
   // Daftar halaman berdasarkan urutan index (Maksimal 4 ikon)
-  final List<Widget> _pages = [
+final List<Widget> _pages = [
     const DashboardScreen(), // Index 0 (HOME)
-    const PlaceholderScreen(title: 'Rekap Kelapa', icon: Icons.nature, color: Colors.orangeAccent), // Index 1
-    const PlaceholderScreen(title: 'Rekap Galon', icon: Icons.water_drop, color: Colors.lightBlueAccent), // Index 2
-    const PlaceholderScreen(title: 'Rekap Kontrakan', icon: Icons.house, color: Colors.purpleAccent), // Index 3
+    const KelapaReportScreen(), // <--- INI KITA GANTI (Index 1)
+    const PlaceholderScreen(
+      title: 'Rekap Galon',
+      icon: Icons.water_drop,
+      color: Colors.lightBlueAccent,
+    ), // Index 2
+    const PlaceholderScreen(
+      title: 'Rekap Kontrakan',
+      icon: Icons.house,
+      color: Colors.purpleAccent,
+    ), // Index 3
   ];
 
   void _onTabTapped(int index) {
@@ -28,7 +38,12 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   // --- FUNGSI MUNCULKAN MENU "TAMBAH TRANSAKSI" ---
-  void _showAddTransactionMenu(BuildContext context, Color bgColor, Color primaryColor, Color textColor) {
+  void _showAddTransactionMenu(
+    BuildContext context,
+    Color bgColor,
+    Color primaryColor,
+    Color textColor,
+  ) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -43,27 +58,40 @@ class _MainLayoutState extends State<MainLayout> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Pilih Jenis Transaksi', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+              Text(
+                'Pilih Jenis Transaksi',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ),
               const SizedBox(height: 24),
               Row(
                 children: [
                   Expanded(
                     child: _buildActionMenuBtn(
-                      context, 'Pemasukan', Icons.arrow_downward, primaryColor, 
+                      context,
+                      'Pemasukan',
+                      Icons.arrow_downward,
+                      primaryColor,
                       () {
                         Navigator.pop(context); // Tutup menu
-                        debugPrint("Arahkan ke Form Pemasukan");
-                      }
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const IncomeFormScreen()));
+                      },
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildActionMenuBtn(
-                      context, 'Utang Baru', Icons.arrow_upward, AppColors.error, 
+                      context,
+                      'Utang Baru',
+                      Icons.arrow_upward,
+                      AppColors.error,
                       () {
                         Navigator.pop(context); // Tutup menu
                         debugPrint("Arahkan ke Form Utang");
-                      }
+                      },
                     ),
                   ),
                 ],
@@ -72,11 +100,17 @@ class _MainLayoutState extends State<MainLayout> {
             ],
           ),
         );
-      }
+      },
     );
   }
 
-  Widget _buildActionMenuBtn(BuildContext context, String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildActionMenuBtn(
+    BuildContext context,
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -91,7 +125,10 @@ class _MainLayoutState extends State<MainLayout> {
           children: [
             Icon(icon, color: color, size: 32),
             const SizedBox(height: 12),
-            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+            Text(
+              label,
+              style: TextStyle(color: color, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
       ),
@@ -103,53 +140,83 @@ class _MainLayoutState extends State<MainLayout> {
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
     final surfaceColor = Theme.of(context).cardColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    final Color dynamicPrimary = isDark ? AppColors.primary : const Color(0xFF007A3D);
+
+    final Color dynamicPrimary = isDark
+        ? AppColors.primary
+        : const Color(0xFF007A3D);
     final unselectedIconColor = isDark ? Colors.white54 : Colors.black54;
     final textColor = isDark ? Colors.white : Colors.black;
 
     return Scaffold(
       backgroundColor: bgColor,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
-      
+      body: IndexedStack(index: _currentIndex, children: _pages),
+
       // TOMBOL TENGAH: TAMBAH (+)
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddTransactionMenu(context, surfaceColor, dynamicPrimary, textColor),
+        onPressed: () => _showAddTransactionMenu(
+          context,
+          surfaceColor,
+          dynamicPrimary,
+          textColor,
+        ),
         backgroundColor: dynamicPrimary,
         elevation: 8,
         shape: const CircleBorder(),
         child: const Icon(Icons.add, color: Colors.white, size: 32),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      
-      // NAVBAR BAWAH
+
+// NAVBAR BAWAH
       bottomNavigationBar: BottomAppBar(
         color: surfaceColor,
         shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
+        notchMargin: 8,
         child: SizedBox(
           height: 60,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Bagian Kiri
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildNavItem(icon: Icons.home_filled, label: 'Home', index: 0, primaryColor: dynamicPrimary, unselectedColor: unselectedIconColor),
-                  _buildNavItem(icon: Icons.nature, label: 'Kelapa', index: 1, primaryColor: dynamicPrimary, unselectedColor: unselectedIconColor),
-                ],
+              // KELOMPOK KIRI
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildNavItem(
+                        icon: Icons.home_filled, 
+                        label: 'Home', 
+                        index: 0, 
+                        primaryColor: dynamicPrimary, 
+                        unselectedColor: unselectedIconColor), // <-- Tambahkan ini
+                    _buildNavItem(
+                        icon: Icons.nature, 
+                        label: 'Kelapa', 
+                        index: 1, 
+                        primaryColor: dynamicPrimary, 
+                        unselectedColor: unselectedIconColor), // <-- Tambahkan ini
+                  ],
+                ),
               ),
-              // Bagian Kanan
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildNavItem(icon: Icons.water_drop, label: 'Galon', index: 2, primaryColor: dynamicPrimary, unselectedColor: unselectedIconColor),
-                  _buildNavItem(icon: Icons.house, label: 'Kontrak', index: 3, primaryColor: dynamicPrimary, unselectedColor: unselectedIconColor),
-                ],
+              // RUANG KOSONG UNTUK TOMBOL (+) TENGAH
+              const SizedBox(width: 48), 
+              // KELOMPOK KANAN
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildNavItem(
+                        icon: Icons.water_drop, 
+                        label: 'Galon', 
+                        index: 2, 
+                        primaryColor: dynamicPrimary, 
+                        unselectedColor: unselectedIconColor), // <-- Tambahkan ini
+                    _buildNavItem(
+                        icon: Icons.house, 
+                        label: 'Kontrak', 
+                        index: 3, 
+                        primaryColor: dynamicPrimary, 
+                        unselectedColor: unselectedIconColor), // <-- Tambahkan ini
+                  ],
+                ),
               ),
             ],
           ),
@@ -158,7 +225,13 @@ class _MainLayoutState extends State<MainLayout> {
     );
   }
 
-  Widget _buildNavItem({required IconData icon, required String label, required int index, required Color primaryColor, required Color unselectedColor}) {
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required int index,
+    required Color primaryColor,
+    required Color unselectedColor,
+  }) {
     final isSelected = _currentIndex == index;
     final color = isSelected ? primaryColor : unselectedColor;
 
@@ -177,7 +250,7 @@ class _MainLayoutState extends State<MainLayout> {
               fontSize: 10,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
-          )
+          ),
         ],
       ),
     );
@@ -190,18 +263,33 @@ class PlaceholderScreen extends StatelessWidget {
   final IconData icon;
   final Color color;
 
-  const PlaceholderScreen({super.key, required this.title, required this.icon, required this.color});
+  const PlaceholderScreen({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
+    final textColor = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white
+        : Colors.black;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, size: 100, color: color.withOpacity(0.5)),
           const SizedBox(height: 20),
-          Text('Halaman $title\nSegera Hadir', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+          Text(
+            'Halaman $title\nSegera Hadir',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
         ],
       ),
     );
