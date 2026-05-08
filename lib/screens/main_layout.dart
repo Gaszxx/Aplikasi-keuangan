@@ -3,6 +3,12 @@ import '../theme/app_colors.dart';
 import 'dashboard_screen.dart';
 import 'income_form_screen.dart';
 import 'kelapa_report_screen.dart';
+import 'galon_report_screen.dart';
+import 'kontrakan_report_screen.dart';
+import 'package:provider/provider.dart'; // Wajib untuk context.watch
+import '../providers/finance_provider.dart'; // Sesuaikan path-nya
+import 'debt_report_screen.dart';
+
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -18,17 +24,9 @@ class _MainLayoutState extends State<MainLayout> {
   // Daftar halaman berdasarkan urutan index (Maksimal 4 ikon)
 final List<Widget> _pages = [
     const DashboardScreen(), // Index 0 (HOME)
-    const KelapaReportScreen(), // <--- INI KITA GANTI (Index 1)
-    const PlaceholderScreen(
-      title: 'Rekap Galon',
-      icon: Icons.water_drop,
-      color: Colors.lightBlueAccent,
-    ), // Index 2
-    const PlaceholderScreen(
-      title: 'Rekap Kontrakan',
-      icon: Icons.house,
-      color: Colors.purpleAccent,
-    ), // Index 3
+    const KelapaReportScreen(),
+    const GalonReportScreen(), 
+    const KontrakanReportScreen(), // Index 3
   ];
 
   void _onTabTapped(int index) {
@@ -140,15 +138,18 @@ final List<Widget> _pages = [
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
     final surfaceColor = Theme.of(context).cardColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    
 
     final Color dynamicPrimary = isDark
         ? AppColors.primary
         : const Color(0xFF007A3D);
     final unselectedIconColor = isDark ? Colors.white54 : Colors.black54;
     final textColor = isDark ? Colors.white : Colors.black;
+    final finance = context.watch<FinanceProvider>();
 
-    return Scaffold(
+return Scaffold(
       backgroundColor: bgColor,
+      // BAGIAN APPBAR DENGAN NOTIFIKASI BUKU
       body: IndexedStack(index: _currentIndex, children: _pages),
 
       // TOMBOL TENGAH: TAMBAH (+)

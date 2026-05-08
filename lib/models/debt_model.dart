@@ -1,42 +1,50 @@
 class DebtModel {
   final String id;
-  final String title;       // Misal: Bank BRI, FIF Vario, Pajak Kaleng
-  final String category;    // Kendaraan, Bank, Personal
-  final double amount;      // Nominal utang
-  final DateTime dueDate;   // Jatuh tempo
-  final bool isPaid;        // Status lunas
-  final DateTime? paidDate; // Tanggal dilunasi
+  final String creditorName; // Nama Bank, Leasing, atau Orang (Misal: BRI, FIF, Si A)
+  final double amount; // Nominal angsuran per bulan ATAU total hutang jika sekali bayar
+  final DateTime dueDate; // Tanggal jatuh tempo terdekat
+  final bool isInstallment; // True jika cicilan bulanan, False jika sekali bayar
+  final int currentInstallment; // Angsuran ke-berapa saat ini (Misal: 3)
+  final int totalInstallments; // Total tenor bulan (Misal: 12)
+  final bool isPaid; // Status LUNAS TOTAL (Masuk ke tabel bawah)
+  final String description; // Catatan tambahan
 
   DebtModel({
     required this.id,
-    required this.title,
-    required this.category,
+    required this.creditorName,
     required this.amount,
     required this.dueDate,
+    this.isInstallment = false,
+    this.currentInstallment = 1,
+    this.totalInstallments = 1,
     this.isPaid = false,
-    this.paidDate,
+    this.description = '',
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'creditorName': creditorName,
+      'amount': amount,
+      'dueDate': dueDate.toIso8601String(),
+      'isInstallment': isInstallment,
+      'currentInstallment': currentInstallment,
+      'totalInstallments': totalInstallments,
+      'isPaid': isPaid,
+      'description': description,
+    };
+  }
 
   factory DebtModel.fromMap(Map<String, dynamic> data, String documentId) {
     return DebtModel(
       id: documentId,
-      title: data['title'] ?? '',
-      category: data['category'] ?? 'Lainnya',
-      amount: (data['amount'] ?? 0).toDouble(),
-      dueDate: DateTime.parse(data['dueDate']),
+      creditorName: data['creditorName'] ?? '',
+      amount: double.tryParse(data['amount'].toString()) ?? 0.0,
+      dueDate: data['dueDate'] != null ? DateTime.parse(data['dueDate'].toString()) : DateTime.now(),
+      isInstallment: data['isInstallment'] ?? false,
+      currentInstallment: int.tryParse(data['currentInstallment'].toString()) ?? 1,
+      totalInstallments: int.tryParse(data['totalInstallments'].toString()) ?? 1,
       isPaid: data['isPaid'] ?? false,
-      paidDate: data['paidDate'] != null ? DateTime.parse(data['paidDate']) : null,
+      description: data['description'] ?? '',
     );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'title': title,
-      'category': category,
-      'amount': amount,
-      'dueDate': dueDate.toIso8601String(),
-      'isPaid': isPaid,
-      if (paidDate != null) 'paidDate': paidDate?.toIso8601String(),
-    };
   }
 }

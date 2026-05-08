@@ -1,4 +1,4 @@
-enum ExpenseType { modal, sewa }
+enum ExpenseType { modal, sewa, operasional }
 
 class ExpenseModel {
   final String id;
@@ -30,7 +30,8 @@ class ExpenseModel {
   factory ExpenseModel.fromMap(Map<String, dynamic> data, String documentId) {
     return ExpenseModel(
       id: documentId,
-      type: ExpenseType.values.firstWhere((e) => e.name == data['type']),
+      type: ExpenseType.values.firstWhere(
+        (e) => e.name == data['type'],orElse: () => ExpenseType.operasional),
       amount: double.tryParse(data['amount'].toString()) ?? 0.0,
       date: DateTime.parse(data['date']),
       outlet: data['outlet'] ?? 'Umum',
