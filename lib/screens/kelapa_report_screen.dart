@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+
 import '../models/income_model.dart';
 import '../models/expense_model.dart';
 import '../providers/finance_provider.dart';
-import '../theme/app_colors.dart';
 
 enum TimeFilter { hari, minggu, bulan }
 
@@ -24,7 +25,6 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
     'Semua Outlet', 'Tutugan', 'Capil', 'Ciledug', 'Permata Hijau', 'Cicalengka', 'Pa Mamat'
   ];
 
-  // Fungsi helper untuk filter waktu yang konsisten
   bool _isWithinFilter(DateTime date) {
     final now = DateTime.now();
     if (_selectedTime == TimeFilter.hari) {
@@ -39,24 +39,21 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
   @override
   Widget build(BuildContext context) {
     final finance = context.watch<FinanceProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark ? AppColors.primary : const Color(0xFF007A3D);
-    final bgColor = Theme.of(context).scaffoldBackgroundColor;
-    final cardColor = Theme.of(context).cardColor;
-    final textColor = isDark ? Colors.white : Colors.black;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-    // --- 1. FILTER & GABUNG DATA ---
+    // --- 1. FILTER & GABUNG DATA (QA SECURED) ---
+    // Pastikan HANYA data Kelapa yang masuk ke laporan ini!
     var kelapaIncomes = finance.incomes.where((i) => i.type == IncomeType.kelapa && _isWithinFilter(i.date)).toList();
-    var kelapaExpenses = finance.expenses.where((e) => _isWithinFilter(e.date)).toList();
+    var kelapaExpenses = finance.expenses.where((e) => e.unitBisnis == 'Kelapa' && _isWithinFilter(e.date)).toList();
 
     if (_selectedOutlet != 'Semua Outlet') {
       kelapaIncomes = kelapaIncomes.where((i) => i.location == _selectedOutlet).toList();
       kelapaExpenses = kelapaExpenses.where((e) => e.outlet == _selectedOutlet).toList();
     }
 
-    // Buat riwayat gabungan (Incomes + Expenses) untuk ditampilkan di list
     List<dynamic> combinedHistory = [...kelapaIncomes, ...kelapaExpenses];
-    combinedHistory.sort((a, b) => b.date.compareTo(a.date)); // Urutkan terbaru di atas
+    combinedHistory.sort((a, b) => b.date.compareTo(a.date)); 
 
     // --- 2. LOGIKA GRAFIK ---
     List<String> labels = [];
@@ -87,46 +84,61 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
     double totalGaji = kelapaIncomes.fold(0, (sum, i) => sum + (i.employeeCut ?? 0));
     double totalSewa = kelapaExpenses.where((e) => e.type == ExpenseType.sewa).fold(0, (sum, e) => sum + e.amount);
     
-    // Hitung Stok (Hanya untuk tampilan inventaris)
+    // Ekstraksi aman untuk hitung jumlah stok butir kelapa
     double stokButir = kelapaExpenses
-        .where((e) => e.type == ExpenseType.modal)
-        .fold(0, (sum, e) => sum + (double.tryParse(e.description?.split(' ')[1] ?? '0') ?? 0));
+        .where((e) => e.type == ExpenseType.modal && e.description.contains('Stok:'))
+        .fold(0, (sum, e) {
+          final parts = e.description.split(' ');
+          if (parts.length > 1) return sum + (double.tryParse(parts[1]) ?? 0);
+          return sum;
+        });
 
-    double labaBersihReal = totalKotor - totalGaji - totalSewa;
+    double totalBiayaStok = kelapaExpenses.where((e) => e.type == ExpenseType.modal).fold(0, (sum, e) => sum + e.amount);
+    double labaBersihReal = totalKotor - totalGaji - totalSewa - totalBiayaStok;
 
     return Scaffold(
-      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent, elevation: 0,
-        title: Text('Analitik Kelapa', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+        title: const Text('Laporan Kelapa', style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Row(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: ListView(
+              padding: const EdgeInsets.all(20),
               children: [
-                Expanded(flex: 3, child: _buildOutletDropdown(cardColor, textColor, primary)),
-                const SizedBox(width: 10),
-                Expanded(flex: 4, child: _buildTimeSegmented(primary)),
+                Row(
+                  children: [
+                    Expanded(flex: 3, child: _buildOutletDropdown(theme)),
+                    const SizedBox(width: 10),
+                    Expanded(flex: 4, child: _buildTimeSegmented(theme)),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                _buildMainProfitCard(colorScheme, labaBersihReal, totalKotor, totalGaji),
+                const SizedBox(height: 20),
+                
+                if (_selectedOutlet != 'Semua Outlet')
+                  _buildPotensiCard(theme, stokButir, stokButir * 8000, totalKotor),
+                  
+                _buildChartSection(theme, labels, values, maxVal),
+                const SizedBox(height: 24),
+                
+                _buildActionButtons(context, theme),
+                const SizedBox(height: 24),
+                
+                _buildSewaStat(theme, totalSewa),
+                const SizedBox(height: 32),
+                
+                Text('Riwayat Transaksi Terpadu', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                _buildUnifiedHistoryList(combinedHistory, theme),
+                const SizedBox(height: 50),
               ],
             ),
-            const SizedBox(height: 24),
-            _buildMainProfitCard(primary, labaBersihReal, totalKotor, totalGaji),
-            const SizedBox(height: 20),
-            if (_selectedOutlet != 'Semua Outlet')
-              _buildPotensiCard(stokButir, stokButir * 8000, totalKotor, isDark),
-            _buildChartSection(cardColor, textColor, primary, labels, values, maxVal),
-            const SizedBox(height: 24),
-            _buildActionButtons(context, primary),
-            const SizedBox(height: 24),
-            _buildSewaStat(totalSewa, isDark),
-            const SizedBox(height: 32),
-            Text('Riwayat Transaksi Terpadu', style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            _buildUnifiedHistoryList(combinedHistory, primary, textColor),
-            const SizedBox(height: 50),
-          ],
+          ),
         ),
       ),
     );
@@ -134,8 +146,15 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
 
   // --- UI COMPONENTS ---
 
-  Widget _buildUnifiedHistoryList(List<dynamic> list, Color primary, Color textColor) {
-    if (list.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('Belum ada data aktivitas', style: TextStyle(color: Colors.grey))));
+  Widget _buildUnifiedHistoryList(List<dynamic> list, ThemeData theme) {
+    if (list.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20), 
+          child: Text('Belum ada data aktivitas', style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey))
+        )
+      );
+    }
 
     return ListView.builder(
       shrinkWrap: true,
@@ -145,152 +164,276 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
         final item = list[index];
         bool isIncome = item is IncomeModel;
         
-        IconData icon;
-        Color color;
-        String title;
-        String subtitle;
-        String trailing;
+        IconData icon; Color color; String title; String subtitle; String trailing;
 
         if (isIncome) {
-          icon = Icons.add_chart;
-          color = Colors.green;
+          icon = Icons.add_chart_rounded;
+          color = theme.colorScheme.primary; // Hijau/Teal
           title = "Penjualan: ${item.location}";
           subtitle = "Gaji: ${_formatRp(item.employeeCut ?? 0)}";
           trailing = "+ ${_formatRp(item.amount)}";
         } else {
           bool isSewa = item.type == ExpenseType.sewa;
-          icon = isSewa ? Icons.vpn_key : Icons.inventory_2;
-          color = isSewa ? Colors.red : Colors.blue;
-          title = isSewa ? "Bayar Sewa" : "Isi Stok Kelapa";
-          subtitle = item.description ?? "";
-          trailing = isSewa ? "- ${_formatRp(item.amount)}" : "Stok Masuk";
+          icon = isSewa ? Icons.vpn_key_rounded : Icons.inventory_2_rounded;
+          color = isSewa ? theme.colorScheme.error : Colors.blue;
+          title = isSewa ? "Bayar Sewa" : "Belanja Stok Kelapa";
+          subtitle = item.description;
+          trailing = "- ${_formatRp(item.amount)}";
         }
 
-        return Container(
+        return Card(
           margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+          elevation: 0,
+          color: color.withOpacity(0.05),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: color.withOpacity(0.2))),
           child: ListTile(
-            leading: CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color, size: 18)),
-            title: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            leading: CircleAvatar(backgroundColor: color.withOpacity(0.15), child: Icon(icon, color: color, size: 20)),
+            title: Text(title, style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold)),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                Text(DateFormat('dd MMM yyyy, HH:mm').format(item.date), style: const TextStyle(fontSize: 9, color: Colors.blueGrey)),
+                const SizedBox(height: 4),
+                Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                Text(DateFormat('dd MMM yyyy, HH:mm').format(item.date), style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey, fontSize: 9)),
               ],
             ),
-            trailing: Text(trailing, style: TextStyle(color: isIncome ? Colors.green : (color == Colors.red ? Colors.red : Colors.blue), fontWeight: FontWeight.bold, fontSize: 13)),
+            trailing: Text(trailing, style: theme.textTheme.titleSmall?.copyWith(color: color, fontWeight: FontWeight.bold)),
           ),
         );
       },
     );
   }
 
-  Widget _buildPotensiCard(double butir, double potensi, double realKotor, bool isDark) {
+  Widget _buildPotensiCard(ThemeData theme, double butir, double potensi, double realKotor) {
     double sisa = potensi - realKotor;
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.orange.withOpacity(0.3))),
-      child: Column(children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Target Inventaris', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
-            Text('${butir.toInt()} Butir', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
-          ]),
-          const Icon(Icons.inventory, color: Colors.orange, size: 28),
-        ]),
-        const Divider(height: 20),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          _buildSmallInfo('Potensi', _formatRp(potensi)),
-          _buildSmallInfo('Sisa Target', _formatRp(sisa < 0 ? 0 : sisa), color: Colors.red),
-        ])
-      ]),
-    );
-  }
-
-  Widget _buildMainProfitCard(Color primary, double profit, double kotor, double gaji) {
-    return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [primary, primary.withOpacity(0.8)]),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: primary.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+        color: Colors.orange.withOpacity(0.1), 
+        borderRadius: BorderRadius.circular(20), 
+        border: Border.all(color: Colors.orange.withOpacity(0.3))
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('LABA BERSIH (SETELAH SEWA & GAJI)', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Text(_formatRp(profit), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          _buildMiniStat('Omset Kotor', _formatRp(kotor)),
-          _buildMiniStat('Gaji Pegawai', _formatRp(gaji)),
-        ])
-      ]),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start, 
+                children: [
+                  Text('Target Inventaris Tersedia', style: theme.textTheme.labelSmall?.copyWith(color: Colors.orange, fontWeight: FontWeight.bold)),
+                  Text('${butir.toInt()} Butir', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                ]
+              ),
+              const Icon(Icons.inventory_2_rounded, color: Colors.orange, size: 32),
+            ]
+          ),
+          const Divider(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+            children: [
+              _buildSmallInfo(theme, 'Potensi Omset', _formatRp(potensi)),
+              _buildSmallInfo(theme, 'Sisa Target', _formatRp(sisa < 0 ? 0 : sisa), color: theme.colorScheme.error),
+            ]
+          )
+        ]
+      ),
     );
   }
 
-  Widget _buildSewaStat(double sewa, bool isDark) {
+  Widget _buildMainProfitCard(ColorScheme colorScheme, double profit, double kotor, double gaji) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [colorScheme.primary, colorScheme.primary.withOpacity(0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: colorScheme.primary.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, 
+        children: [
+          Text('LABA BERSIH (NETTO)', style: TextStyle(color: colorScheme.onPrimary.withOpacity(0.8), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          const SizedBox(height: 8),
+          Text(_formatRp(profit), style: TextStyle(color: colorScheme.onPrimary, fontSize: 32, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+            children: [
+              _buildMiniStat(colorScheme, 'Omset Kotor', _formatRp(kotor)),
+              _buildMiniStat(colorScheme, 'Gaji Pegawai', _formatRp(gaji)),
+            ]
+          )
+        ]
+      ),
+    );
+  }
+
+  Widget _buildSewaStat(ThemeData theme, double sewa) {
     String periode = _selectedTime == TimeFilter.hari ? "Hari Ini" : _selectedTime == TimeFilter.minggu ? "7 Hari Terakhir" : "Bulan Ini";
     return Container(
-      width: double.infinity, padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: Colors.red.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.red.withOpacity(0.2))),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Biaya Sewa ($periode)', style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
-          Text(_formatRp(sewa), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 18)),
-        ]),
-        const Icon(Icons.calendar_today, color: Colors.red, size: 20),
-      ]),
+      width: double.infinity, 
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.error.withOpacity(0.05), 
+        borderRadius: BorderRadius.circular(16), 
+        border: Border.all(color: theme.colorScheme.error.withOpacity(0.2))
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start, 
+            children: [
+              Text('Biaya Sewa Lapak ($periode)', style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(_formatRp(sewa), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.error, fontWeight: FontWeight.bold)),
+            ]
+          ),
+          Icon(Icons.calendar_month_rounded, color: theme.colorScheme.error, size: 24),
+        ]
+      ),
     );
   }
 
-  // --- FUNCTIONS ---
+  Widget _buildChartSection(ThemeData theme, List<String> labels, List<double> values, double maxVal) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: theme.colorScheme.outlineVariant)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, 
+          children: [
+            Text('Trend Penjualan Kotor', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 30),
+            SizedBox(
+              height: 120, 
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
+                crossAxisAlignment: CrossAxisAlignment.end, 
+                children: List.generate(values.length, (index) { 
+                  bool isSelected = _selectedBarIndex == index; 
+                  return GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _selectedBarIndex = index);
+                    }, 
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end, 
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300), 
+                          curve: Curves.easeOutCubic,
+                          width: values.length > 7 ? 16 : 28, 
+                          height: values[index] > 0 ? (values[index] / maxVal) * 90 : 10, 
+                          decoration: BoxDecoration(
+                            color: values[index] > 0 ? (isSelected ? theme.colorScheme.primary : theme.colorScheme.primary.withOpacity(0.3)) : theme.colorScheme.surfaceContainerHighest, 
+                            borderRadius: BorderRadius.circular(6)
+                          )
+                        ), 
+                        const SizedBox(height: 8), 
+                        Text(labels[index], style: theme.textTheme.labelSmall?.copyWith(color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant))
+                      ]
+                    )
+                  ); 
+                })
+              )
+            )
+          ]
+        ),
+      ),
+    );
+  }
+
+  // --- ACTIONS & MODALS ---
 
   void _openExpenseSheet(ExpenseType type) {
-    final ctrl = TextEditingController();
-    double prediksi = 0;
+    final amountCtrl = TextEditingController();
+    final butirCtrl = TextEditingController();
+    
     showModalBottomSheet(
-      context: context, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => StatefulBuilder(builder: (context, setMState) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 25, right: 25, top: 25),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(type == ExpenseType.modal ? 'Isi Stok Kelapa' : 'Bayar Sewa Outlet', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          const SizedBox(height: 20),
-          TextField(
-            controller: ctrl, keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: type == ExpenseType.modal ? 'Jumlah Butir' : 'Nominal Rp', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-            onChanged: (v) { if(type == ExpenseType.modal) setMState(() => prediksi = (double.tryParse(v) ?? 0) * 8000); },
+      context: context, 
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(builder: (context, setMState) {
+        final theme = Theme.of(ctx);
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24))
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min, 
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10)))),
+                const SizedBox(height: 24),
+                
+                Text(type == ExpenseType.modal ? 'Belanja Stok Kelapa' : 'Bayar Sewa Outlet', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 24),
+                
+                if (type == ExpenseType.modal) ...[
+                  TextField(
+                    controller: butirCtrl, 
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(labelText: 'Jumlah Butir', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), prefixIcon: const Icon(Icons.inventory_2_rounded)),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                TextField(
+                  controller: amountCtrl, 
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(labelText: 'Total Biaya (Rp)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), prefixIcon: const Icon(Icons.payments_rounded)),
+                ),
+                const SizedBox(height: 32),
+                
+                SizedBox(
+                  width: double.infinity, height: 55, 
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: theme.colorScheme.primary, foregroundColor: theme.colorScheme.onPrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                    onPressed: () {
+                      double amount = double.tryParse(amountCtrl.text) ?? 0;
+                      String butir = butirCtrl.text;
+                      
+                      if (amount > 0) {
+                        context.read<FinanceProvider>().addExpense(ExpenseModel(
+                          id: '', 
+                          type: type, 
+                          unitBisnis: 'Kelapa', // WAJIB
+                          amount: amount,
+                          date: DateTime.now(), 
+                          outlet: _selectedOutlet,
+                          description: type == ExpenseType.modal ? 'Stok: $butir butir' : 'Sewa Lapak $_selectedOutlet',
+                        ));
+                        HapticFeedback.lightImpact();
+                        Navigator.pop(ctx);
+                      }
+                    }, 
+                    child: const Text('Simpan Pengeluaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))
+                  )
+                ),
+              ]
+            ),
           ),
-          if (prediksi > 0) Padding(padding: const EdgeInsets.only(top: 10), child: Text('Potensi Omset: ${_formatRp(prediksi)}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))),
-          const SizedBox(height: 25),
-          SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: () {
-            double val = double.tryParse(ctrl.text) ?? 0;
-            if (val > 0) {
-              context.read<FinanceProvider>().addExpense(ExpenseModel(
-                id: '', type: type, amount: type == ExpenseType.modal ? 0 : val,
-                date: DateTime.now(), outlet: _selectedOutlet,
-                description: type == ExpenseType.modal ? 'Input $val Butir Kelapa' : 'Sewa Tempat Periode Ini',
-              ));
-              Navigator.pop(ctx);
-            }
-          }, child: const Text('Simpan Data'))),
-          const SizedBox(height: 30),
-        ]),
-      )),
+        );
+      }),
     );
   }
 
-  // --- EXISTING HELPERS ---
-  Widget _buildSmallInfo(String t, String v, {Color? color}) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(t, style: const TextStyle(fontSize: 10, color: Colors.grey)), Text(v, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color))]);
-  Widget _buildMiniStat(String t, String v) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(t, style: const TextStyle(color: Colors.white54, fontSize: 10)), Text(v, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold))]);
-  Widget _buildBtn(IconData i, String l, Color c, VoidCallback t) => ElevatedButton.icon(onPressed: t, icon: Icon(i, color: Colors.white, size: 16), label: Text(l, style: const TextStyle(color: Colors.white, fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: c, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+  // --- HELPERS ---
+  Widget _buildSmallInfo(ThemeData theme, String t, String v, {Color? color}) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(t, style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey)), const SizedBox(height: 4), Text(v, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: color))]);
+  Widget _buildMiniStat(ColorScheme colorScheme, String t, String v) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(t, style: TextStyle(color: colorScheme.onPrimary.withOpacity(0.7), fontSize: 10)), const SizedBox(height: 4), Text(v, style: TextStyle(color: colorScheme.onPrimary, fontSize: 14, fontWeight: FontWeight.bold))]);
+  Widget _buildBtn(IconData i, String l, Color c, VoidCallback t) => ElevatedButton.icon(onPressed: t, icon: Icon(i, color: Colors.white, size: 18), label: Text(l, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: c, elevation: 0, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))));
   String _formatRp(double amount) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   
-  Widget _buildOutletDropdown(Color cardColor, Color textColor, Color primary) => Container(padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: primary.withOpacity(0.3))), child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: _selectedOutlet, isExpanded: true, style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.bold), items: _outlets.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(), onChanged: (val) => setState(() => _selectedOutlet = val!))));
-  Widget _buildTimeSegmented(Color primary) => SegmentedButton<TimeFilter>(showSelectedIcon: false, segments: const [ButtonSegment(value: TimeFilter.hari, label: Text('H')), ButtonSegment(value: TimeFilter.minggu, label: Text('M')), ButtonSegment(value: TimeFilter.bulan, label: Text('B'))], selected: {_selectedTime}, onSelectionChanged: (val) => setState(() => _selectedTime = val.first));
-  Widget _buildActionButtons(BuildContext context, Color primary) { bool isAll = _selectedOutlet == 'Semua Outlet'; return Row(children: [Expanded(child: _buildBtn(Icons.add_box, isAll ? 'Beli Stok' : 'Isi Kelapa', Colors.blueGrey, () => _handleBtn(context, ExpenseType.modal))), const SizedBox(width: 12), Expanded(child: _buildBtn(Icons.key, 'Bayar Sewa', Colors.brown, () => _handleBtn(context, ExpenseType.sewa)))]); }
-  void _handleBtn(BuildContext context, ExpenseType type) { if (_selectedOutlet == 'Semua Outlet') { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih Outlet spesifik dahulu!'))); } else { _openExpenseSheet(type); } }
-  Widget _buildChartSection(Color cardColor, Color textColor, Color primary, List<String> labels, List<double> values, double maxVal) => Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.withOpacity(0.2))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Trend Penjualan', style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold)), const SizedBox(height: 30), SizedBox(height: 120, child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, crossAxisAlignment: CrossAxisAlignment.end, children: List.generate(values.length, (index) { bool isSelected = _selectedBarIndex == index; return GestureDetector(onTap: () => setState(() => _selectedBarIndex = index), child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [AnimatedContainer(duration: const Duration(milliseconds: 300), width: values.length > 7 ? 16 : 25, height: values[index] > 0 ? (values[index] / maxVal) * 80 : 10, decoration: BoxDecoration(color: values[index] > 0 ? (isSelected ? primary : primary.withOpacity(0.4)) : Colors.grey.withOpacity(0.1), borderRadius: BorderRadius.circular(4))), const SizedBox(height: 8), Text(labels[index], style: TextStyle(fontSize: 9, color: isSelected ? primary : Colors.grey))])); })))],));
+  Widget _buildOutletDropdown(ThemeData theme) => Container(padding: const EdgeInsets.symmetric(horizontal: 16), decoration: BoxDecoration(color: theme.colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.colorScheme.outlineVariant)), child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: _selectedOutlet, isExpanded: true, style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold), items: _outlets.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(), onChanged: (val) { HapticFeedback.selectionClick(); setState(() => _selectedOutlet = val!); })));
+  Widget _buildTimeSegmented(ThemeData theme) => SegmentedButton<TimeFilter>(showSelectedIcon: false, segments: const [ButtonSegment(value: TimeFilter.hari, label: Text('Hari')), ButtonSegment(value: TimeFilter.minggu, label: Text('Mgg')), ButtonSegment(value: TimeFilter.bulan, label: Text('Bln'))], selected: {_selectedTime}, onSelectionChanged: (val) { HapticFeedback.selectionClick(); setState(() => _selectedTime = val.first); });
+  Widget _buildActionButtons(BuildContext context, ThemeData theme) { bool isAll = _selectedOutlet == 'Semua Outlet'; return Row(children: [Expanded(child: _buildBtn(Icons.inventory_2_rounded, 'Beli Stok', Colors.blue, () => _handleBtn(context, ExpenseType.modal))), const SizedBox(width: 12), Expanded(child: _buildBtn(Icons.vpn_key_rounded, 'Bayar Sewa', theme.colorScheme.error, () => _handleBtn(context, ExpenseType.sewa)))]); }
+  void _handleBtn(BuildContext context, ExpenseType type) { if (_selectedOutlet == 'Semua Outlet') { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih Outlet spesifik dahulu dari menu di atas!'), backgroundColor: Colors.orange)); HapticFeedback.heavyImpact(); } else { _openExpenseSheet(type); } }
 }
