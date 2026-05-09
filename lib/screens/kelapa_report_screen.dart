@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../models/income_model.dart';
 import '../models/expense_model.dart';
 import '../providers/finance_provider.dart';
+import '../providers/auth_provider.dart';
 
 enum TimeFilter { hari, minggu, bulan }
 
@@ -20,6 +21,8 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
   String _selectedOutlet = 'Semua Outlet';
   TimeFilter _selectedTime = TimeFilter.hari;
   int _selectedBarIndex = 0;
+  String _searchQuery = '';
+  String _filterType = 'Semua';
 
   final List<String> _outlets = [
     'Semua Outlet', 'Tutugan', 'Capil', 'Ciledug', 'Permata Hijau', 'Cicalengka', 'Pa Mamat'
@@ -54,6 +57,23 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
 
     List<dynamic> combinedHistory = [...kelapaIncomes, ...kelapaExpenses];
     combinedHistory.sort((a, b) => b.date.compareTo(a.date)); 
+    var filteredHistory = combinedHistory.where((item) {
+      bool isIncome = item is IncomeModel;
+      
+      // 1. Cek Filter Dropdown
+      if (_filterType == 'Pemasukan' && !isIncome) return false;
+      if (_filterType == 'Pengeluaran' && isIncome) return false;
+
+      // 2. Cek Kolom Pencarian (Search)
+      String deskripsi = (item.description ?? '').toLowerCase();
+      if (_searchQuery.isNotEmpty && !deskripsi.contains(_searchQuery)) return false;
+
+      return true;
+    }).toList();
+    
+    // Cek Jabatan (Role) untuk memunculkan Tong Sampah
+    final auth = context.watch<AuthProvider>();
+    final isSuperAdmin = auth.currentRole?.name.toLowerCase() == 'superadmin';
 
     // --- 2. LOGIKA GRAFIK ---
     List<String> labels = [];
@@ -134,7 +154,35 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
                 
                 Text('Riwayat Transaksi Terpadu', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
-                _buildUnifiedHistoryList(combinedHistory, theme),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Cari transaksi...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _filterType,
+                          items: ['Semua', 'Pemasukan', 'Pengeluaran'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                          onChanged: (val) => setState(() => _filterType = val!),
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildUnifiedHistoryList(filteredHistory, theme, isSuperAdmin),
                 const SizedBox(height: 50),
               ],
             ),
@@ -146,7 +194,7 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
 
   // --- UI COMPONENTS ---
 
-  Widget _buildUnifiedHistoryList(List<dynamic> list, ThemeData theme) {
+ Widget _buildUnifiedHistoryList(List<dynamic> list, ThemeData theme, bool isSuperAdmin) {
     if (list.isEmpty) {
       return Center(
         child: Padding(
@@ -197,7 +245,47 @@ class _KelapaReportScreenState extends State<KelapaReportScreen> {
                 Text(DateFormat('dd MMM yyyy, HH:mm').format(item.date), style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey, fontSize: 9)),
               ],
             ),
-            trailing: Text(trailing, style: theme.textTheme.titleSmall?.copyWith(color: color, fontWeight: FontWeight.bold)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(trailing, style: theme.textTheme.titleSmall?.copyWith(color: color, fontWeight: FontWeight.bold)),
+                
+                // MUNCULKAN TONG SAMPAH HANYA JIKA SUPERADMIN (BAGAS SUJIWO)
+                if (isSuperAdmin) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: Icon(Icons.delete_outline_rounded, color: theme.colorScheme.error, size: 20),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          title: const Text("Hapus Transaksi?"),
+                          content: const Text("Data akan dihapus permanen dari sistem. Lanjutkan?"),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Batal", style: TextStyle(color: Colors.grey))),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: theme.colorScheme.error),
+                              onPressed: () {
+                                if (isIncome) {
+                                  context.read<FinanceProvider>().deleteIncome(item.id);
+                                } else {
+                                  context.read<FinanceProvider>().deleteExpense(item.id);
+                                }
+                                HapticFeedback.heavyImpact();
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transaksi berhasil dihapus!')));
+                              },
+                              child: const Text("Ya, Hapus", style: TextStyle(color: Colors.white)),
+                            ),
+                          ],
+                        )
+                      );
+                    },
+                  )
+                ]
+              ],
+            ),
           ),
         );
       },

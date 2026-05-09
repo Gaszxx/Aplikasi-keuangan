@@ -7,6 +7,7 @@ import '../models/door_model.dart';
 import '../models/income_model.dart';
 import '../models/expense_model.dart';
 import '../providers/finance_provider.dart';
+import '../providers/auth_provider.dart';
 
 class KontrakanReportScreen extends StatefulWidget {
   const KontrakanReportScreen({super.key});
@@ -17,7 +18,8 @@ class KontrakanReportScreen extends StatefulWidget {
 
 class _KontrakanReportScreenState extends State<KontrakanReportScreen> {
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
-
+  String _searchQuery = '';
+  String _filterType = 'Semua';
   final List<String> _namaBulan = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
@@ -64,7 +66,25 @@ class _KontrakanReportScreenState extends State<KontrakanReportScreen> {
     List<dynamic> combinedHistory = [...kontrakanIncomes, ...kontrakanExpenses];
     combinedHistory.sort((a, b) => b.date.compareTo(a.date));
     var monthlyHistory = combinedHistory.where((item) => item.date.month == _selectedMonth.month && item.date.year == _selectedMonth.year).toList();
+    // --- TAMBAHAN: LOGIKA PENCARIAN & FILTER ---
+    var filteredHistory = monthlyHistory.where((item) {
+      bool isIncome = item is IncomeModel;
+      
+      // 1. Cek Filter Dropdown
+      if (_filterType == 'Pemasukan' && !isIncome) return false;
+      if (_filterType == 'Pengeluaran' && isIncome) return false;
 
+      // 2. Cek Kolom Pencarian (Search)
+      String deskripsi = (item.description ?? '').toLowerCase();
+      if (_searchQuery.isNotEmpty && !deskripsi.contains(_searchQuery)) return false;
+
+      return true;
+    }).toList();
+    
+    // Cek Jabatan (Role) untuk memunculkan Tong Sampah
+    final auth = context.watch<AuthProvider>();
+    final isSuperAdmin = auth.currentRole?.name.toLowerCase() == 'superadmin';
+    
     // --- 3. HITUNG STATISTIK POTENSI ---
     int totalPintu = sortedDoors.length;
     int terisi = sortedDoors.where((d) => !d.isEmpty).length;
@@ -185,7 +205,35 @@ class _KontrakanReportScreenState extends State<KontrakanReportScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                _buildUnifiedHistoryList(monthlyHistory, theme, kontrakanColor),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Cari transaksi...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _filterType,
+                          items: ['Semua', 'Pemasukan', 'Pengeluaran'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                          onChanged: (val) => setState(() => _filterType = val!),
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildUnifiedHistoryList(monthlyHistory, theme, kontrakanColor,isSuperAdmin),
                 const SizedBox(height: 40),
               ],
             ),
@@ -318,7 +366,7 @@ class _KontrakanReportScreenState extends State<KontrakanReportScreen> {
     );
   }
 
-  Widget _buildUnifiedHistoryList(List<dynamic> list, ThemeData theme, Color kontrakanColor) {
+Widget _buildUnifiedHistoryList(List<dynamic> list, ThemeData theme, Color kontrakanColor, bool isSuperAdmin) {
     if (list.isEmpty) {
       return Center(
         child: Padding(
@@ -350,13 +398,54 @@ class _KontrakanReportScreenState extends State<KontrakanReportScreen> {
             leading: CircleAvatar(backgroundColor: color.withOpacity(0.15), child: Icon(icon, color: color, size: 20)),
             title: Text(title, style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold)),
             subtitle: Text(DateFormat('dd MMM yyyy, HH:mm').format(item.date), style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey, fontSize: 10)),
-            trailing: Text(trailing, style: theme.textTheme.titleSmall?.copyWith(color: color, fontWeight: FontWeight.bold)),
+            // --- BAGIAN TONG SAMPAH ---
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(trailing, style: theme.textTheme.titleSmall?.copyWith(color: color, fontWeight: FontWeight.bold)),
+                
+                // MUNCULKAN TONG SAMPAH HANYA JIKA SUPERADMIN
+                if (isSuperAdmin) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: Icon(Icons.delete_outline_rounded, color: theme.colorScheme.error, size: 20),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          title: const Text("Hapus Transaksi?"),
+                          content: const Text("Data akan dihapus permanen dari sistem. Lanjutkan?"),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Batal", style: TextStyle(color: Colors.grey))),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: theme.colorScheme.error),
+                              onPressed: () {
+                                if (isIncome) {
+                                  context.read<FinanceProvider>().deleteIncome(item.id);
+                                } else {
+                                  context.read<FinanceProvider>().deleteExpense(item.id);
+                                }
+                                HapticFeedback.heavyImpact();
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transaksi berhasil dihapus!')));
+                              },
+                              child: const Text("Ya, Hapus", style: TextStyle(color: Colors.white)),
+                            ),
+                          ],
+                        )
+                      );
+                    },
+                  )
+                ]
+              ],
+            ),
           ),
         );
       },
     );
   }
-
+  
   Widget _buildMiniStat(ThemeData theme, String t, String v, Color c) => Column(crossAxisAlignment: CrossAxisAlignment.center, children: [Text(t, style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey)), const SizedBox(height: 4), Text(v, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: c))]);
   String _formatRp(double amount) => NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
 

@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.1
+  sdk: '>=3.3.0 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -31,6 +31,9 @@ dependencies:
   flutter:
     sdk: flutter
   shimmer: ^3.0.0
+  pdf: ^3.10.7           # Mesin pembuat PDF
+  printing: ^5.11.1      # Untuk print langsung atau simpan file
+  path_provider: ^2.1.2  # Untuk akses penyimpanan HP
   
   # Firebase (Database & Core)
   firebase_core: ^2.24.2
@@ -72,6 +75,8 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/images/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

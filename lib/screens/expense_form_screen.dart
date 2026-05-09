@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/expense_model.dart';
-import '../providers/auth_provider.dart';
 import '../providers/finance_provider.dart';
 
 class ExpenseFormScreen extends StatefulWidget {
@@ -20,13 +19,16 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   // State Manajemen
   ExpenseType _selectedType = ExpenseType.operasional;
-  String _selectedUnit = 'Kelapa'; // Default unit
+  String _selectedUnit = 'Kelapa'; 
   
   final List<String> _unitOptions = ['Kelapa', 'Galon', 'Kontrakan', 'Umum'];
-  final List<String> _outlets = ['Pusat', 'Tutugan', 'Capil', 'Ciledug', 'Permata Hijau'];
-  String _selectedOutlet = 'Pusat';
+  
+  // Data Outlet Dinamis
+  final List<String> _kelapaOutlets = ['Pusat', 'Tutugan', 'Capil', 'Ciledug', 'Permata Hijau'];
+  final List<String> _galonOutlets = ['Depot Utama']; // Bisa ditambah nanti
+  
+  String? _selectedOutlet = 'Pusat'; // Boleh null jika unitnya Kontrakan/Umum
 
-  // Controllers
   final _amountCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
 
@@ -69,8 +71,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         type: _selectedType,
         unitBisnis: _selectedUnit,
         amount: amount,
-        date: DateTime.now(),
-        outlet: _selectedOutlet,
+        date: DateTime.now(), // Jika Bos butuh bisa pilih tanggal, kita bisa tambahkan DatePicker
+        outlet: _selectedOutlet ?? '-', // Jika null, isi dengan strip agar rapi di laporan
         description: _descCtrl.text.trim(),
       );
 
@@ -80,7 +82,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Pengeluaran Berhasil Dicatat! 💸'),
+            content: Text('Pengeluaran $_selectedUnit Berhasil Dicatat! 💸'),
             backgroundColor: Theme.of(context).colorScheme.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -93,6 +95,22 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  // --- LOGIKA SMART FORM ---
+  void _onUnitChanged(String newUnit) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedUnit = newUnit;
+      // Reset & atur ulang outlet sesuai unit
+      if (newUnit == 'Kelapa') {
+        _selectedOutlet = _kelapaOutlets.first;
+      } else if (newUnit == 'Galon') {
+        _selectedOutlet = _galonOutlets.first;
+      } else {
+        _selectedOutlet = null; // Sembunyikan dropdown outlet
+      }
+    });
   }
 
   @override
@@ -114,19 +132,28 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-                  // 1. PILIH UNIT BISNIS (Krusial untuk Laporan)
-                  Text('Unit Bisnis Terkait', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  // 1. PILIH UNIT BISNIS
+                  Text('Tujuan Pengeluaran', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
-                  SegmentedButton<String>(
-                    segments: _unitOptions.map((unit) => ButtonSegment(
-                      value: unit, 
-                      label: Text(unit, style: const TextStyle(fontSize: 12))
-                    )).toList(),
-                    selected: {_selectedUnit},
-                    onSelectionChanged: (val) {
-                      HapticFeedback.selectionClick();
-                      setState(() => _selectedUnit = val.first);
-                    },
+                  // Mencegah error lebar layar di HP kecil dengan Wrap
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _unitOptions.map((unit) {
+                      final isSelected = _selectedUnit == unit;
+                      return ChoiceChip(
+                        label: Text(unit),
+                        selected: isSelected,
+                        selectedColor: colorScheme.error.withOpacity(0.2),
+                        labelStyle: TextStyle(
+                          color: isSelected ? colorScheme.error : colorScheme.onSurface,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                        onSelected: (selected) {
+                          if (selected) _onUnitChanged(unit);
+                        },
+                      );
+                    }).toList(),
                   ),
                   const SizedBox(height: 24),
 
@@ -137,7 +164,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Informasi Pengeluaran', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                          Text('Informasi Biaya', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 16),
                           
                           DropdownButtonFormField<ExpenseType>(
@@ -145,7 +172,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                             decoration: _inputDeco(theme, 'Kategori Biaya'),
                             items: ExpenseType.values.map((type) => DropdownMenuItem(
                               value: type, 
-                              child: Text(type.name.toUpperCase())
+                              // Ubah enum operasional jadi Operasional, dll.
+                              child: Text(type.name[0].toUpperCase() + type.name.substring(1))
                             )).toList(),
                             onChanged: (val) => setState(() => _selectedType = val!),
                           ),
@@ -173,13 +201,19 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       padding: const EdgeInsets.all(20),
                       child: Column(
                         children: [
-                          DropdownButtonFormField<String>(
-                            value: _selectedOutlet,
-                            decoration: _inputDeco(theme, 'Lokasi / Outlet'),
-                            items: _outlets.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-                            onChanged: (val) => setState(() => _selectedOutlet = val!),
-                          ),
-                          const SizedBox(height: 16),
+                          // HANYA MUNCUL JIKA UNIT KELAPA ATAU GALON
+                          if (_selectedUnit == 'Kelapa' || _selectedUnit == 'Galon') ...[
+                            DropdownButtonFormField<String>(
+                              value: _selectedOutlet,
+                              decoration: _inputDeco(theme, 'Lokasi / Outlet'),
+                              items: (_selectedUnit == 'Kelapa' ? _kelapaOutlets : _galonOutlets)
+                                  .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+                                  .toList(),
+                              onChanged: (val) => setState(() => _selectedOutlet = val),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
                           TextFormField(
                             controller: _descCtrl,
                             maxLines: 3,
@@ -197,7 +231,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     height: 55,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: colorScheme.error, // Merah untuk pengeluaran
+                        backgroundColor: colorScheme.error,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         elevation: 0,
@@ -205,7 +239,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       onPressed: _isSubmitting ? null : _submitData,
                       child: _isSubmitting 
                           ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text('SIMPAN PENGELUARAN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          : const Text('SIMPAN PENGELUARAN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
                     ),
                   ),
                 ],
@@ -228,7 +262,6 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   }
 }
 
-// Re-use formatter yang sama untuk konsistensi
 class CurrencyInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {

@@ -4,7 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'services/notification_service.dart';
-
+import 'screens/splash_screen.dart';
 // --- IMPORT FILE KITA ---
 import 'theme/app_colors.dart';
 import 'theme/app_styles.dart';
@@ -170,7 +170,7 @@ class BidadariERPApp extends StatelessWidget {
             ),
 
             // --- ROUTER AWAL ---
-            home: const AuthWrapper(),
+            home: const SplashScreen(),
           );
         },
       ),
